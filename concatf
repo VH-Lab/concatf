@@ -24,7 +24,7 @@ Options:
   -h, --help          Display this help message and exit.
 
 Example:
-  concatf ./my_project bundled_code.m m h
+  concatf ./my_project bundled_code.txt m h
 EOF
 }
 
