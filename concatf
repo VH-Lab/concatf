@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# --- concatf ---
+# A script to recursively concatenate files of specified extensions from a directory,
+# adding each filename as a header.
+
+# --- Documentation ---
+print_usage() {
+  cat << EOF
+Usage: concatf [OPTIONS] <input-directory> <output-file> <extension_1> [extension_2] ...
+
+Recursively finds all files with the given extensions in the input directory,
+concatenates them into a single output file, and adds the relative file path as a
+header for each file's content.
+
+The file path header will include the input directory itself.
+
+Arguments:
+  <input-directory>   The directory to search for files.
+  <output-file>       The file to write the concatenated content to.
+  <extension_1>...    One or more file extensions to include (e.g., "m", "h", "txt").
+
+Options:
+  -h, --help          Display this help message and exit.
+
+Example:
+  concatf ./my_project bundled_code.m m h
+EOF
+}
+
+# --- Argument Parsing ---
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$#" -lt 3 ]]; then
+  print_usage
+  exit 0
+fi
+
+INPUT_DIR="$1"
+OUTPUT_FILE="$2"
+shift 2
+EXTENSIONS=("$@")
+
+# --- Validate Input Directory ---
+if [ ! -d "$INPUT_DIR" ]; then
+  echo "Error: Input directory '$INPUT_DIR' not found."
+  exit 1
+fi
+
+# --- Prepare for find command ---
+# Create an empty output file, or clear it if it exists
+> "$OUTPUT_FILE"
+
+# Build the -name arguments for the find command
+find_args=()
+for i in "${!EXTENSIONS[@]}"; do
+  if [ $i -gt 0 ]; then
+    find_args+=(-o)
+  fi
+  find_args+=(-name "*.${EXTENSIONS[$i]}")
+done
+
+# --- Core Logic ---
+
+# Resolve absolute paths to handle all cases safely. This prevents issues
+# with the 'cd' command later.
+# On macOS, 'readlink -f' isn't available, so we use this 'cd/pwd' combo.
+ABS_OUTPUT_FILE="$(cd "$(dirname "$OUTPUT_FILE")" && pwd)/$(basename "$OUTPUT_FILE")"
+ABS_INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
+
+# Get the parent directory of the input, and the name of the input directory itself.
+# This allows us to 'cd' into the parent and call 'find' on the target directory,
+# which produces the clean, relative paths we want.
+PARENT_DIR=$(dirname "$ABS_INPUT_DIR")
+FIND_TARGET_DIR=$(basename "$ABS_INPUT_DIR")
+
+# Change to the parent directory to generate correct relative paths
+ORIGINAL_PWD=$(pwd)
+cd "$PARENT_DIR" || exit
+
+# Use a while loop for better compatibility and handling of special characters.
+# The -print0 and 'read -d' handles filenames with spaces or newlines.
+find "$FIND_TARGET_DIR" \( "${find_args[@]}" \) -print0 | while IFS= read -r -d $'\0' file; do
+    echo "--- ${file} ---" >> "$ABS_OUTPUT_FILE"
+    cat "$file" >> "$ABS_OUTPUT_FILE"
+    # Add a newline for spacing between files
+    echo "" >> "$ABS_OUTPUT_FILE"
+done
+
+# Return to the original directory
+cd "$ORIGINAL_PWD"
+
+echo "Concatenation complete. Output written to '$OUTPUT_FILE'."
